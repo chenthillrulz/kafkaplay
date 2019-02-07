@@ -1,7 +1,14 @@
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.util.JSONPObject;
+import jdk.nashorn.internal.parser.JSONParser;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+
+import java.io.File;
+import java.io.FileReader;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 /**
@@ -13,8 +20,10 @@ public class SampleProducer extends Thread {
     public static final String KAFKA_SERVER_URL = "localhost";
     public static final int KAFKA_SERVER_PORT = 9092;
     public static final String CLIENT_ID = "SampleProducer";
-    private final String topic;
-    private final Boolean isAsync;
+    private String topic;
+    private Boolean isAsync;
+    Product product;
+
     public SampleProducer(String topic, Boolean isAsync) {
         Properties properties = new Properties();
         properties.put("bootstrap.servers", KAFKA_SERVER_URL + ":" + KAFKA_SERVER_PORT);
@@ -24,11 +33,27 @@ public class SampleProducer extends Thread {
         producer = new KafkaProducer<Integer, String>(properties);
         this.topic = topic;
         this.isAsync = isAsync;
+        ObjectMapper objectMapper = new ObjectMapper();
+        File file = new File("C:\\Users\\VPalaC9\\IdeaProjects\\kafkaplay\\src\\main\\java\\sample.json");
+        try {
+            this.product = objectMapper.readValue(file, Product.class);
+        } catch (Exception ex) {
+            System.out.println("Unable to parse Json - " + ex);
+        }
     }
     public void run() {
         int messageNo = 1;
         while (messageNo < 101) {
-            String messageStr = "Message_" + messageNo;
+            String messageStr;
+            product.samProductId =  Integer.toString(messageNo);
+            ObjectMapper objectMapper = new ObjectMapper();
+            try {
+                messageStr = objectMapper.writeValueAsString(product);
+            } catch (Exception ex) {
+                System.out.println("Unable to serialize product to string");
+                return;
+            }
+//            String messageStr = "Message_" + messageNo;
             long startTime = System.currentTimeMillis();
             if (isAsync) { // Send asynchronously
                 producer.send(new ProducerRecord<Integer, String>(topic,

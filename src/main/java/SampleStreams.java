@@ -1,10 +1,13 @@
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.common.serialization.IntegerSerializer;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Predicate;
 import org.apache.kafka.streams.kstream.Produced;
 
 import java.util.Properties;
@@ -16,6 +19,7 @@ public class SampleStreams {
     public static final int KAFKA_SERVER_PORT = 9092;
     public static final String CLIENT_ID = "SampleKafkaStreamsPlay";
     Properties properties;
+    private boolean alternate = true;
 
     public SampleStreams() {
         properties = new Properties();
@@ -34,11 +38,53 @@ public class SampleStreams {
                 Consumed.with(Serdes.Integer(), Serdes.String())
         );
 
-        products.mapValues((value) -> {
-            return value + "----------- transformed ----------";
-        }).to("output", Produced.with(Serdes.Integer(), Serdes.String()));
+        KStream<Integer, String> updatedStream =  products.mapValues((value) -> {
+            ObjectMapper objectMapper = new ObjectMapper();
+            Product product = null;
+
+            try {
+                product = objectMapper.readValue(value, Product.class);
+            } catch (Exception ex) {}
+
+            // REST Call to SAM
+            product.pp2ProductId = product.samProductId;
+            System.out.println(product.samProductId);
+            if (alternate) {
+                product.error = "some exception occurred boss";
+                alternate = false;
+            } else {
+                alternate = true;
+            }
+
+            String transformedStr = value;
+            try {
+                transformedStr = objectMapper.writeValueAsString(product);
+            } catch (Exception ex) {
+                System.out.println("error converting to string");
+            }
+
+            return transformedStr;
+        });
+
+        updatedStream.filter(new Predicate<Integer, String>() {
+            @Override
+            public boolean test(Integer integer, String s) {
+                ObjectMapper mapper = new ObjectMapper();
+                Product product = null;
+
+                try {
+                    product = mapper.readValue(s, Product.class);
+                } catch (Exception ex) {
+                }
+
+                if (product.error.isEmpty()) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        }).to ("output", Produced.with(Serdes.Integer(), Serdes.String()));
 
         return new KafkaStreams (builder.build(), this.properties);
     }
-
 }
